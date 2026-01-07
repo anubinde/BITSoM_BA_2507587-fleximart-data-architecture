@@ -1,1 +1,2 @@
-
+This repository contains the operational product catalog data and the technical justification for its architecture. It focuses on solving the challenges associated with storing highly diverse and nested product attributes using flexible database models (NoSQL).
+The analysis concludes that a NoSQL (Document-based) structure is optimal for the product catalog to handle schema rigidity and data sparsity caused by non-uniform specifications, prioritizing flexibility over the strict transactional integrity of a relational model.
