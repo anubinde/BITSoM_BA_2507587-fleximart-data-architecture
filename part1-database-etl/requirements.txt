@@ -1,1 +1,11 @@
+# Core libraries for Data Wrangling and Transformation
+pandas
+regex
 
+# Library for connecting to the database and running SQL commands
+sqlalchemy
+
+# Database Connector 
+
+# For MySQL:
+# pymysql
