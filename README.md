@@ -2,10 +2,10 @@
 Transformation and analysis of Fleximart data set
 # FlexiMart Data Architecture Project
 
-**Student Name:** [Your Name]
-**Student ID:** [Your ID]
-**Email:** [Your Email]
-**Date:** [Date]
+**Student Name:** Anushna Binde
+**Student ID:** BITSoM_BA_2507587
+**Email:** anubinde@gmail.com
+**Date:** 08-01-2026
 
 ## Project Overview
 
