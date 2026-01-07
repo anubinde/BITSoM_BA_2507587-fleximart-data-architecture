@@ -1,1 +1,178 @@
-                                      **SECTION-3**3.1 Star Schema Design Documentationsection-1[schema overview]--FACT TABLE: fact_salesGrain: One row per product per order line itemBusiness Process: Sales transactionsMeasures (Numeric Facts):quantity_sold: Number of units soldunit_price: Price per unit at time of salediscount_amount: Discount appliedtotal_amount: Final amount (quantity*unit price-discount)Foreign Keys:date_key---> dim_dateproduct_key---> dim_productcustomer_key ---> dim_customerDIMENSION TABLE: dim_datePurpose: Date dimension for time-based analysisType: Conformed dimensionAttributes:date_key (PK): Surrogate key (integer, format: YYYYMMDD)full_date: Actual dateday_of_week: Monday, Tuesday, etc.month: 1-12month_name: January, February, etc.quarter: Q1, Q2, Q3, Q4year: 2023, 2024, etc.is_weekend: BooleanDIMENSION TABLE: dim_productPurpose: Stores product details, hierarchy, and costs for margin analysisType: Conformed dimensionAttributes:product_key (PK): Surrogate key (integer)product_id: Natural key (original SKU or system ID)product_name: Full name of the productbrand: The brand or manufacturer namecategory: High-level grouping (e.g., Electronics, Grocery)subcategory: Granular grouping (e.g., Smartphones, Dairy)unit_cost: The base cost to FlexiMart for the item (for profit calculation)DIMENSION TABLE: dim_customerPurpose: Stores customer demographics and loyalty segmentationType: Conformed dimensionAttributes:customer_key (PK): Surrogate key (integer)customer_id: Natural key (original ID from CRM)first_name: Customer's first namelast_name: Customer's last nameemail: Contact email addressphone: Primary contact numbercity: City of residence for geographic analysisstate: State or provinceloyalty_tier: Membership status (e.g., Bronze, Silver, Gold, Platinum)registration_date: The date the customer first signed upSECTION-2  [Design Decisions]1.Choosing the transaction line-item level (the lowest level of detail) as the granularity for the fact_sales table is a strategic decision that provides FlexiMart with maximum analytical flexibility.Here are the primary reasons for this design decision:1. Maximum Dimensional FlexibilityBy capturing data at the line-item level, we ensure the data can be sliced and diced by any attribute in our dimensions. If we had chosen a coarser grain (like "one row per order"), we would lose the ability to analyze performance by Product Category or Brand, as an order often contains products from multiple categories.2. Support for Market Basket AnalysisA line-item grain is essential for Market Basket Analysis. This allows FlexiMart to discover which products are frequently purchased together (e.g., "Customers who buy Product A also tend to buy Product B"). Understanding these associations is critical for optimizing store layouts and designing effective cross-selling promotions.3. Accurate Margin and Discount TrackingDiscounts and profit margins are often specific to individual products rather than entire orders. Granular tracking allows FlexiMart to:Identify which specific products are being heavily discounted.Calculate Net Profit accurately by subtracting a product's specific unit_cost from its unit_price.Monitor "Price Erosion" for specific SKUs over time.4. Future-Proofing for Drill-DownsIn data warehousing, it is always possible to aggregate up (roll up) from line-items to orders, days, or months. However, it is impossible to drill down to see which products were sold if the data was originally stored at a higher level. This "atomic" grain ensures that as FlexiMart’s business questions become more complex, the data is already detailed enough to answer them.2.In a data warehouse like FlexiMart, choosing surrogate keys (integers like product_key) over natural keys (business IDs like SKU or email) is a standard best practice for several critical reasons:1. Stability and ImmutabilityNatural keys are often subject to business rule changes. For example, if a customer changes their email or a manufacturer updates their SKU format, using that natural key as your primary link would require you to update millions of rows in your fact_sales table.Surrogate keys are internal to the warehouse and never change, ensuring your historical links remain unbroken even if the source system data is modified.2. Performance and EfficiencyData warehouses process massive amounts of data. Joining tables using a single integer (4 or 8 bytes) is significantly faster and more storage-efficient than joining on long strings like email addresses or alphanumeric SKUs.This leads to faster query response times when generating your analytical reports.3. Handling Historical Changes (SCD)FlexiMart needs to track how products evolve over time. If a product’s category changes from "Electronics" to "Home Office," you may want to keep the old category for historical sales and use the new one for future sales.By using surrogate keys, you can have multiple rows for the same natural SKU (one for each version of the product), each with its own unique product_key. This is known as a Slowly Changing Dimension (SCD Type 2).4. Integration of Multiple SourcesIf FlexiMart eventually acquires another company, their "Product ID" might overlap with yours. Using your own internal surrogate keys allows you to map different natural keys from multiple source systems into a single, unified warehouse without ID conflicts.3.The Star Schema is specifically built to handle roll-up and drill-down operations by utilizing the hierarchical relationships within dimension tables and the granular data in the fact table.1. Roll-upRoll-up is the process of moving from specific details to a broader summary. This is used when you want to see the "big picture" of FlexiMart's performance.How it works: You aggregate (sum, average, or count) the measures in the fact_sales table by moving up a hierarchy in a dimension.Example (Time): You can roll up daily sales into a monthly report, and then further into a quarterly or annual view using the attributes in dim_date.Example (Product): You can roll up individual product sales into subcategory totals, then into category-wide revenue using the hierarchy in dim_product.2. Drill-downDrill-down is the opposite of roll-up; it involves moving from high-level summaries to granular details. This is essential for identifying the "why" behind a trend.How it works: Because the grain of the fact_sales table is set at the transaction line-item level (the most detailed level possible), you can break down a large number into its individual parts.Example (Geography): If you notice a sales dip in a specific state, you can drill down to see performance by city, and eventually down to individual customers in that city using dim_customer.Example (Performance): If an "Electronics" category is over-performing, you can drill down to see which specific brands or individual SKUs are driving that growth.3.  Schema Supports These Operations--The effectiveness of these operations depends on two key features of your design:Atomic Grain: Since every single item sold is recorded as its own row in fact_sales, you never "lose" the detail. You can always go from a $1M annual revenue figure back down to a single $5 mouse sale.Dimension Hierarchies: Dimensions like dim_date and dim_product are designed with clear levels (Year > Quarter > Month > Day) that act as "steps" for these operations.SECTION-3This example illustrates the ETL (Extract, Transform, Load) process, where raw transactional data is converted into a structured format for business intelligence.Stage 1: The Source SystemIn the transactional database, the data is usually stored in separate, normalized tables to ensure efficiency.Order Table: Records the date and customer ID.Order Items Table: Records that 2 Laptops were sold at 50,000 each.Customer/Product Tables: Store the basic names and categories.Stage 2: The TransformationDuring this phase, the data is cleaned and "keys" are assigned:1.Assign Surrogate Keys: The system looks up "John Doe" and "Laptop." It finds that in the warehouse, John is Customer Key 12 and the Laptop is Product Key 5.2.Date Conversion: The date 2024-01-15 is converted into a smart integer key: 20240115.3.Calculation: The system calculates the measure: 2 (Qty) * 50,000 (Price) = 1,00,000 (Total Amount).Stage 3: The Data Warehouse (Star Schema)The data is loaded into the Star Schema, where one central "Fact" connects to descriptive "Dimensions."The Central Fact TableThe fact_sales table stores the quantitative results of the sale and the keys to link to more info.date_key: 20240115product_key: 5customer_key: 12quantity_sold: 2unit_price: 50000total_amount: 100000The Descriptive Dimension TablesThese tables provide the context for the numbers in the fact table.dim_date: "The date was a Monday in January, Q1 2024."dim_product: "The product was a Laptop in the Electronics category."dim_customer: "The customer was John Doe from Mumbai."3.3 OLAP ANALYTICS QUERIES-- Query 1: Monthly Sales Drill-Down-- Business Scenario:  "The CEO wants to see sales performance broken down by time periods. Start with yearly total, then quarterly, then monthly sales for 2024."-- Demonstrates: Drill-down from Year to Quarter to MonthSELECT   SELECT    d.year,    d.quarter,    d.month_name,    SUM(f.total_amount) AS total_sales,    SUM(f.quantity_sold) AS total_quantityFROM fact_sales fJOIN dim_date d ON f.date_key = d.date_keyWHERE d.year = 2024GROUP BY    d.year,    d.quarter,    d.month,    d.month_nameORDER BY    d.year,    d.month;-- Query 2: Top 10 Products by Revenue-- Business Scenario: "The product manager needs to identify top-performing products. Show the top 10 products by revenue, along with their category, total units sold, and revenue contribution percentage."-- Includes: Revenue percentage calculationSELECT    --SELECT    p.product_name,    p.category,    SUM(f.quantity_sold) AS units_sold,    SUM(f.total_amount) AS revenue,    ROUND((SUM(f.total_amount) / SUM(SUM(f.total_amount)) OVER()) * 100, 2) AS revenue_percentageFROM fact_sales fJOIN dim_product p ON f.product_key = p.product_keyGROUP BY    p.product_name,    p.categoryORDER BY    revenue DESCLIMIT 10;-- Query 3: Customer Segmentation-- Business Scenario: "Marketing wants to target high-value customers. Segment customers into 'High Value' (>₹50,000 spent), 'Medium Value' (₹20,000-₹50,000), and 'Low Value' (<₹20,000). Show count of customers and total revenue in each segment."-- Segments: High/Medium/Low value customersSELECT    CASE        WHEN total_spend > 50000 THEN 'High Value'        WHEN total_spend BETWEEN 20000 AND 50000 THEN 'Medium Value'        ELSE 'Low Value'    END AS customer_segment,    COUNT(customer_key) AS customer_count,    SUM(total_spend) AS total_revenue,    ROUND(AVG(total_spend), 2) AS avg_revenueFROM (    SELECT        customer_key,        SUM(total_amount) AS total_spend    FROM fact_sales    GROUP BY customer_key) AS customer_spendingGROUP BY customer_segmentORDER BY total_revenue DESC;
+                                      **SECTION-3**
+
+
+
+
+3.1 Star Schema Design Documentation
+
+section-1[schema overview]--
+
+
+FACT TABLE: fact_sales
+Grain: One row per product per order line item
+Business Process: Sales transactions
+Measures (Numeric Facts):
+quantity_sold: Number of units sold
+unit_price: Price per unit at time of sale
+discount_amount: Discount applied
+total_amount: Final amount (quantity*unit price-discount)
+Foreign Keys:
+date_key---> dim_date
+product_key---> dim_product
+customer_key ---> dim_customer
+
+
+DIMENSION TABLE: dim_date
+Purpose: Date dimension for time-based analysis
+Type: Conformed dimension
+Attributes:
+date_key (PK): Surrogate key (integer, format: YYYYMMDD)
+full_date: Actual date
+day_of_week: Monday, Tuesday, etc.
+month: 1-12
+month_name: January, February, etc.
+quarter: Q1, Q2, Q3, Q4
+year: 2023, 2024, etc.
+is_weekend: Boolean
+
+
+DIMENSION TABLE: dim_product
+Purpose: Stores product details, hierarchy, and costs for margin analysis
+Type: Conformed dimension
+Attributes:product_key (PK): Surrogate key (integer)
+product_id: Natural key (original SKU or system ID)
+product_name: Full name of the product
+brand: The brand or manufacturer name
+category: High-level grouping (e.g., Electronics, Grocery)
+subcategory: Granular grouping (e.g., Smartphones, Dairy)
+unit_cost: The base cost to FlexiMart for the item (for profit calculation)
+
+
+DIMENSION TABLE: dim_customer
+Purpose: Stores customer demographics and loyalty segmentation
+Type: Conformed dimension
+Attributes:
+customer_key (PK): Surrogate key (integer)
+customer_id: Natural key (original ID from CRM)
+first_name: Customer's first name
+last_name: Customer's last name
+email: Contact email address
+phone: Primary contact number
+city: City of residence for geographic analysis
+state: State or province
+loyalty_tier: Membership status (e.g., Bronze, Silver, Gold, Platinum)
+registration_date: The date the customer first signed up
+
+
+SECTION-2  [Design Decisions]
+
+1.
+
+Choosing the transaction line-item level (the lowest level of detail) as the granularity for the fact_sales table is a strategic decision that provides FlexiMart with maximum analytical flexibility.
+
+Here are the primary reasons for this design decision:
+
+1. Maximum Dimensional Flexibility
+By capturing data at the line-item level, we ensure the data can be sliced and diced by any attribute in our dimensions. If we had chosen a coarser grain (like "one row per order"), we would lose the ability to analyze performance by Product Category or Brand, as an order often contains products from multiple categories.
+
+2. Support for Market Basket Analysis
+A line-item grain is essential for Market Basket Analysis. This allows FlexiMart to discover which products are frequently purchased together (e.g., "Customers who buy Product A also tend to buy Product B"). Understanding these associations is critical for optimizing store layouts and designing effective cross-selling promotions.
+
+3. Accurate Margin and Discount Tracking
+Discounts and profit margins are often specific to individual products rather than entire orders. Granular tracking allows FlexiMart to:
+
+Identify which specific products are being heavily discounted.
+
+Calculate Net Profit accurately by subtracting a product's specific unit_cost from its unit_price.
+
+Monitor "Price Erosion" for specific SKUs over time.
+
+4. Future-Proofing for Drill-Downs
+In data warehousing, it is always possible to aggregate up (roll up) from line-items to orders, days, or months. However, it is impossible to drill down to see which products were sold if the data was originally stored at a higher level. This "atomic" grain ensures that as FlexiMart’s business questions become more complex, the data is already detailed enough to answer them.
+
+
+2.
+
+In a data warehouse like FlexiMart, choosing surrogate keys (integers like product_key) over natural keys (business IDs like SKU or email) is a standard best practice for several critical reasons:
+
+1. Stability and Immutability
+Natural keys are often subject to business rule changes. For example, if a customer changes their email or a manufacturer updates their SKU format, using that natural key as your primary link would require you to update millions of rows in your fact_sales table.
+
+Surrogate keys are internal to the warehouse and never change, ensuring your historical links remain unbroken even if the source system data is modified.
+
+2. Performance and Efficiency
+Data warehouses process massive amounts of data. Joining tables using a single integer (4 or 8 bytes) is significantly faster and more storage-efficient than joining on long strings like email addresses or alphanumeric SKUs.
+
+This leads to faster query response times when generating your analytical reports.
+
+3. Handling Historical Changes (SCD)
+FlexiMart needs to track how products evolve over time. If a product’s category changes from "Electronics" to "Home Office," you may want to keep the old category for historical sales and use the new one for future sales.
+
+By using surrogate keys, you can have multiple rows for the same natural SKU (one for each version of the product), each with its own unique product_key. This is known as a Slowly Changing Dimension (SCD Type 2).
+
+4. Integration of Multiple Sources
+If FlexiMart eventually acquires another company, their "Product ID" might overlap with yours. Using your own internal surrogate keys allows you to map different natural keys from multiple source systems into a single, unified warehouse without ID conflicts.
+
+
+3.
+
+The Star Schema is specifically built to handle roll-up and drill-down operations by utilizing the hierarchical relationships within dimension tables and the granular data in the fact table.
+
+1. Roll-up
+Roll-up is the process of moving from specific details to a broader summary. This is used when you want to see the "big picture" of FlexiMart's performance.
+
+How it works: You aggregate (sum, average, or count) the measures in the fact_sales table by moving up a hierarchy in a dimension.
+
+Example (Time): You can roll up daily sales into a monthly report, and then further into a quarterly or annual view using the attributes in dim_date.
+
+Example (Product): You can roll up individual product sales into subcategory totals, then into category-wide revenue using the hierarchy in dim_product.
+
+2. Drill-down
+Drill-down is the opposite of roll-up; it involves moving from high-level summaries to granular details. This is essential for identifying the "why" behind a trend.
+
+How it works: Because the grain of the fact_sales table is set at the transaction line-item level (the most detailed level possible), you can break down a large number into its individual parts.
+
+Example (Geography): If you notice a sales dip in a specific state, you can drill down to see performance by city, and eventually down to individual customers in that city using dim_customer.
+
+Example (Performance): If an "Electronics" category is over-performing, you can drill down to see which specific brands or individual SKUs are driving that growth.
+
+3.  Schema Supports These Operations--
+The effectiveness of these operations depends on two key features of your design:
+
+Atomic Grain: Since every single item sold is recorded as its own row in fact_sales, you never "lose" the detail. You can always go from a $1M annual revenue figure back down to a single $5 mouse sale.
+
+Dimension Hierarchies: Dimensions like dim_date and dim_product are designed with clear levels (Year > Quarter > Month > Day) that act as "steps" for these operations.
+
+
+SECTION-3
+
+
+This example illustrates the ETL (Extract, Transform, Load) process, where raw transactional data is converted into a structured format for business intelligence.
+Stage 1: The Source System
+In the transactional database, the data is usually stored in separate, normalized tables to ensure efficiency.
+Order Table: Records the date and customer ID.
+Order Items Table: Records that 2 Laptops were sold at 50,000 each.
+Customer/Product Tables: Store the basic names and categories.
+Stage 2: The Transformation
+During this phase, the data is cleaned and "keys" are assigned:
+1.Assign Surrogate Keys: The system looks up "John Doe" and "Laptop." It finds that in the warehouse, John is Customer Key 12 and the Laptop is Product Key 5.
+2.Date Conversion: The date 2024-01-15 is converted into a smart integer key: 20240115.
+3.Calculation: The system calculates the measure: 2 (Qty) * 50,000 (Price) = 1,00,000 (Total Amount).
+Stage 3: The Data Warehouse (Star Schema)
+The data is loaded into the Star Schema, where one central "Fact" connects to descriptive "Dimensions."
+The Central Fact Table
+The fact_sales table stores the quantitative results of the sale and the keys to link to more info.
+date_key: 20240115
+product_key: 5
+customer_key: 12
+quantity_sold: 2
+unit_price: 50000
+total_amount: 100000
+The Descriptive Dimension Tables
+These tables provide the context for the numbers in the fact table.
+dim_date: "The date was a Monday in January, Q1 2024.
+"dim_product: "The product was a Laptop in the Electronics category.
+"dim_customer: "The customer was John Doe from Mumbai."
+
+
+
